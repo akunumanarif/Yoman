@@ -1,0 +1,38 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    container_name: yoman-frontend
+    expose:
+      - "3000"
+    networks:
+      - proxy_network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: yoman-backend
+    env_file: .env
+    expose:
+      - "8000"
+    networks:
+      - proxy_network
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+      - db:/app/data
+    restart: unless-stopped
+
+networks:
+  proxy_network:
+    external: true
+
+volumes:
+  uploads:
+  outputs:
+  db:

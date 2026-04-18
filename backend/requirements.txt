@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlmodel==0.0.22
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+vastai-sdk==0.1.5
+paramiko==3.5.1
+scp==0.15.0
