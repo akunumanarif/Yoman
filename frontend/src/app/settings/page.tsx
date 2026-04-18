@@ -225,7 +225,7 @@ export default function SettingsPage() {
               </>
             )}
 
-            {gpu?.status === "error" && gpu.ssh_host && (
+            {(gpu?.status === "error" || (gpu?.status === "running" && !gpu.is_setup_done)) && gpu.ssh_host && (
               <button
                 onClick={() => handleAction("retry-setup", retrySetup)}
                 disabled={!!actionLoading}
