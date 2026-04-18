@@ -4,5 +4,6 @@ sqlmodel==0.0.22
 pydantic-settings==2.7.1
 python-multipart==0.0.20
 vastai-sdk==0.1.5
+vastai>=0.1.0
 paramiko==3.5.1
 scp==0.15.0

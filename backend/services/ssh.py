@@ -7,6 +7,57 @@ from scp import SCPClient
 
 logger = logging.getLogger(__name__)
 
+SSH_DIR = Path(os.environ.get("SSH_KEY_DIR", "/app/data/.ssh"))
+SSH_KEY_PATH = SSH_DIR / "id_rsa"
+SSH_PUB_PATH = SSH_DIR / "id_rsa.pub"
+
+
+def ensure_ssh_key() -> Path:
+    """Generate SSH key pair if it doesn't exist, and register with vast.ai."""
+    if SSH_KEY_PATH.exists():
+        return SSH_KEY_PATH
+
+    SSH_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Generate RSA key pair
+    logger.info("Generating SSH key pair...")
+    key = paramiko.RSAKey.generate(4096)
+    key.write_private_key_file(str(SSH_KEY_PATH))
+    os.chmod(SSH_KEY_PATH, 0o600)
+
+    # Save public key
+    pub_key = f"ssh-rsa {key.get_base64()} yoman@backend"
+    SSH_PUB_PATH.write_text(pub_key)
+
+    # Register with vast.ai
+    _register_ssh_key(pub_key)
+
+    return SSH_KEY_PATH
+
+
+def _register_ssh_key(pub_key: str):
+    """Register the public SSH key with vast.ai account."""
+    import subprocess
+    from config import settings
+
+    logger.info("Registering SSH key with vast.ai...")
+    try:
+        # Use vast CLI to add SSH key
+        result = subprocess.run(
+            ["vastai", "set", "api-key", settings.vast_api_key],
+            capture_output=True, text=True,
+        )
+        result = subprocess.run(
+            ["vastai", "ssh-key", "add", pub_key],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            logger.info("SSH key registered with vast.ai")
+        else:
+            logger.warning(f"Failed to register SSH key via CLI: {result.stderr}")
+    except Exception as e:
+        logger.warning(f"Failed to register SSH key: {e}")
+
 
 class SSHService:
     """SSH/SCP service for communicating with vast.ai GPU instances."""
@@ -15,7 +66,7 @@ class SSHService:
         self.host = host
         self.port = port
         self.username = username
-        self.key_path = key_path or os.path.expanduser("~/.ssh/id_rsa")
+        self.key_path = key_path or str(ensure_ssh_key())
         self._client: paramiko.SSHClient | None = None
 
     def connect(self):

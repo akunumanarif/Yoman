@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from routers import jobs, health, gpu
 from services.worker import worker
+from services.ssh import ensure_ssh_key
 
 logging.basicConfig(level=logging.INFO)
 
@@ -15,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    ensure_ssh_key()
     task = asyncio.create_task(worker.start())
     yield
     worker.stop()
