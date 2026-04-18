@@ -9,6 +9,11 @@ if [ -f "/workspace/.setup_complete" ]; then
     exit 0
 fi
 
+# Fix NVIDIA apt key (move from legacy keyring to modern format)
+if apt-key list 2>/dev/null | grep -q "nvidia\|cuda" 2>/dev/null; then
+    apt-key export 7FA2AF80 2>/dev/null | gpg --dearmour -o /etc/apt/trusted.gpg.d/nvidia.gpg 2>/dev/null || true
+fi
+
 # Install system dependencies
 apt-get update && apt-get install -y git wget ffmpeg
 
@@ -18,7 +23,8 @@ rm -rf /workspace/Wan2.2
 cd /workspace
 git clone https://github.com/Wan-Video/Wan2.2.git
 cd Wan2.2
-pip install -r requirements.txt --no-build-isolation --ignore-installed setuptools wheel
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt --no-build-isolation
 
 # Download model weights (skip if already downloaded)
 if [ ! -d "/workspace/models/Wan2.2-Animate-14B" ]; then
