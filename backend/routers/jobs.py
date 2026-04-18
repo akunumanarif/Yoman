@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 from config import settings
 from database import get_session
-from models import Job, JobResponse, JobStatus
+from models import Job, JobResponse, JobStatus, GpuInstance, GpuStatus
 
 router = APIRouter(tags=["jobs"])
 
@@ -35,6 +35,11 @@ async def create_job(
     resolution: str = Form(default="720"),
     session: Session = Depends(get_session),
 ):
+    # Check GPU is running
+    gpu = session.get(GpuInstance, 1)
+    if not gpu or gpu.status != GpuStatus.RUNNING or not gpu.is_setup_done:
+        raise HTTPException(400, "GPU is not running. Start it from Settings first.")
+
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, f"Invalid image type: {image.content_type}")
     if video.content_type not in ALLOWED_VIDEO_TYPES:

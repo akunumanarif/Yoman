@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import jobs, health
+from routers import jobs, health, gpu
 from services.worker import worker
 
 logging.basicConfig(level=logging.INFO)
@@ -33,3 +33,4 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
+app.include_router(gpu.router, prefix="/api")

@@ -72,21 +72,26 @@ class VastService:
         return filtered[0] if filtered else None
 
     def create_instance(self, offer_id: int, disk_gb: int = 100) -> int | None:
-        """Create an interruptible instance with bid pricing."""
+        """Create an interruptible instance from a specific offer."""
         docker_image = settings.vast_docker_image
         bid_price = settings.gpu_max_bid_price
 
         if self.client:
-            result = self.client.launch_instance(
-                num_gpus="1",
-                image=docker_image,
-                disk=str(disk_gb),
-            )
-            if isinstance(result, str):
-                result = json.loads(result)
-            if isinstance(result, dict) and "new_contract" in result:
-                return result["new_contract"]
-            return None
+            try:
+                result = self.client.create_instance(
+                    ID=offer_id,
+                    image=docker_image,
+                    disk=disk_gb,
+                    price=bid_price,
+                )
+                if isinstance(result, str):
+                    result = json.loads(result)
+                if isinstance(result, dict):
+                    return result.get("new_contract") or result.get("id")
+                logger.error(f"Unexpected create_instance result: {result}")
+                return None
+            except Exception as e:
+                logger.error(f"SDK create_instance failed: {e}")
 
         # CLI fallback
         output = subprocess.run(
@@ -94,7 +99,7 @@ class VastService:
                 "vastai", "create", "instance", str(offer_id),
                 "--image", docker_image,
                 "--disk", str(disk_gb),
-                "--bid_price", str(bid_price),
+                "--price", str(bid_price),
                 "--raw",
             ],
             capture_output=True, text=True,

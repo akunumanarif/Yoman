@@ -29,6 +29,41 @@ class Job(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class GpuStatus(str, Enum):
+    OFFLINE = "offline"       # No instance exists
+    RENTING = "renting"       # Creating instance, waiting for it to be ready
+    RUNNING = "running"       # Instance is running and ready
+    STOPPED = "stopped"       # Instance stopped (storage only billing)
+    SETUP = "setup"           # Installing Wan 2.2 / downloading model
+    ERROR = "error"
+
+
+class GpuInstance(SQLModel, table=True):
+    id: int = Field(default=1, primary_key=True)  # Singleton row
+    instance_id: int | None = None                 # Vast.ai instance ID
+    status: GpuStatus = Field(default=GpuStatus.OFFLINE)
+    gpu_name: str | None = None
+    ssh_host: str | None = None
+    ssh_port: int | None = None
+    cost_per_hour: float | None = None
+    error_message: str | None = None
+    is_setup_done: bool = Field(default=False)     # Model installed?
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class GpuInstanceResponse(SQLModel):
+    instance_id: int | None
+    status: GpuStatus
+    gpu_name: str | None
+    ssh_host: str | None
+    ssh_port: int | None
+    cost_per_hour: float | None
+    error_message: str | None
+    is_setup_done: bool
+    updated_at: datetime
+
+
 class JobCreate(SQLModel):
     resolution: str = "720"
 

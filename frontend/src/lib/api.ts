@@ -19,6 +19,20 @@ export interface Job {
   updated_at: string;
 }
 
+export interface GpuInstance {
+  instance_id: number | null;
+  status: "offline" | "renting" | "running" | "stopped" | "setup" | "error";
+  gpu_name: string | null;
+  ssh_host: string | null;
+  ssh_port: number | null;
+  cost_per_hour: number | null;
+  error_message: string | null;
+  is_setup_done: boolean;
+  updated_at: string;
+}
+
+// === Job API ===
+
 export async function createJob(
   image: File,
   video: File,
@@ -62,3 +76,25 @@ export async function deleteJob(id: string): Promise<void> {
 export function getResultUrl(id: string): string {
   return `${API_BASE}/jobs/${id}/result`;
 }
+
+// === GPU API ===
+
+export async function getGpuStatus(): Promise<GpuInstance> {
+  const res = await fetch(`${API_BASE}/gpu/status`);
+  if (!res.ok) throw new Error("Failed to fetch GPU status");
+  return res.json();
+}
+
+async function gpuAction(action: string): Promise<GpuInstance> {
+  const res = await fetch(`${API_BASE}/gpu/${action}`, { method: "POST" });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: `Failed to ${action} GPU` }));
+    throw new Error(error.detail || `Failed to ${action} GPU`);
+  }
+  return res.json();
+}
+
+export const rentGpu = () => gpuAction("rent");
+export const startGpu = () => gpuAction("start");
+export const stopGpu = () => gpuAction("stop");
+export const destroyGpu = () => gpuAction("destroy");
