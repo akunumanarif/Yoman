@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session
 
 from config import settings
@@ -62,9 +63,49 @@ async def gpu_status(session: Session = Depends(get_session)):
     return gpu
 
 
+@router.get("/gpu/offers")
+async def list_offers():
+    """List available GPU offers for renting."""
+    vast = VastService()
+    offers = vast.search_offers()
+    if not offers:
+        return []
+
+    preferred = [m.strip().lower() for m in settings.gpu_preferred_models.split(",")]
+
+    # Filter by preferred models
+    filtered = [
+        o for o in offers
+        if any(p in o.get("gpu_name", "").lower() for p in preferred)
+    ]
+    if not filtered:
+        filtered = offers
+
+    # Sort by price
+    filtered.sort(key=lambda o: o.get("dph_total", float("inf")))
+
+    # Return top 20 with relevant fields
+    return [
+        {
+            "id": o.get("id"),
+            "gpu_name": o.get("gpu_name", "Unknown"),
+            "gpu_ram": round(o.get("gpu_ram", 0)),
+            "cpu_cores": o.get("cpu_cores_effective", o.get("cpu_cores", 0)),
+            "disk_space": round(o.get("disk_space", 0)),
+            "dph_total": o.get("dph_total", 0),
+            "reliability": o.get("reliability2", o.get("reliability")),
+        }
+        for o in filtered[:20]
+    ]
+
+
+class RentRequest(BaseModel):
+    offer_id: int
+
+
 @router.post("/gpu/rent", response_model=GpuInstanceResponse)
-async def rent_gpu(session: Session = Depends(get_session)):
-    """Rent a new interruptible GPU instance."""
+async def rent_gpu(req: RentRequest, session: Session = Depends(get_session)):
+    """Rent a GPU instance from a specific offer."""
     gpu = get_gpu(session)
 
     if gpu.status in (GpuStatus.RUNNING, GpuStatus.RENTING, GpuStatus.SETUP):
@@ -72,22 +113,20 @@ async def rent_gpu(session: Session = Depends(get_session)):
 
     vast = VastService()
 
-    # Find cheapest GPU
-    offer = vast.find_cheapest_gpu()
-    if not offer:
-        raise HTTPException(503, "No suitable GPU offers found on vast.ai")
+    # Get offer details for display
+    offers = vast.search_offers()
+    offer = next((o for o in offers if o.get("id") == req.offer_id), None)
 
     gpu.status = GpuStatus.RENTING
-    gpu.gpu_name = offer.get("gpu_name", "Unknown")
-    gpu.cost_per_hour = offer.get("dph_total")
+    gpu.gpu_name = offer.get("gpu_name", "Unknown") if offer else "Unknown"
+    gpu.cost_per_hour = offer.get("dph_total") if offer else None
     gpu.error_message = None
     gpu.updated_at = datetime.now(timezone.utc)
     session.add(gpu)
     session.commit()
 
     # Create instance
-    offer_id = offer.get("id")
-    instance_id = vast.create_instance(offer_id)
+    instance_id = vast.create_instance(req.offer_id)
     if not instance_id:
         gpu.status = GpuStatus.ERROR
         gpu.error_message = "Failed to create instance"

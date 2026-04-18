@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   GpuInstance,
+  GpuOffer,
   getGpuStatus,
-  rentGpu,
+  listGpuOffers,
+  rentGpuWithOffer,
   startGpu,
   stopGpu,
   destroyGpu,
@@ -22,6 +24,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
 
 export default function SettingsPage() {
   const [gpu, setGpu] = useState<GpuInstance | null>(null);
+  const [offers, setOffers] = useState<GpuOffer[]>([]);
+  const [showOffers, setShowOffers] = useState(false);
+  const [offersLoading, setOffersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +48,34 @@ export default function SettingsPage() {
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleFetchOffers = async () => {
+    setShowOffers(true);
+    setOffersLoading(true);
+    setError(null);
+    try {
+      const data = await listGpuOffers();
+      setOffers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch offers");
+    } finally {
+      setOffersLoading(false);
+    }
+  };
+
+  const handleRent = async (offerId: number) => {
+    setActionLoading("rent");
+    setError(null);
+    try {
+      const data = await rentGpuWithOffer(offerId);
+      setGpu(data);
+      setShowOffers(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rent GPU");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleAction = async (action: string, fn: () => Promise<GpuInstance>) => {
     if (action === "destroy" && !confirm("Are you sure? This will delete the instance and all cached model data.")) {
@@ -69,7 +102,6 @@ export default function SettingsPage() {
   }
 
   const status = gpu ? STATUS_CONFIG[gpu.status] || STATUS_CONFIG.offline : STATUS_CONFIG.offline;
-  const isTransitioning = gpu?.status === "renting" || gpu?.status === "setup";
 
   return (
     <main className="flex-1 bg-zinc-950">
@@ -140,11 +172,11 @@ export default function SettingsPage() {
           <div className="flex gap-3 pt-2">
             {(!gpu || gpu.status === "offline" || gpu.status === "error") && (
               <button
-                onClick={() => handleAction("rent", rentGpu)}
+                onClick={handleFetchOffers}
                 disabled={!!actionLoading}
                 className="flex-1 py-2.5 px-4 rounded-lg font-medium text-white bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
               >
-                {actionLoading === "rent" ? "Renting..." : "Rent GPU"}
+                Rent GPU
               </button>
             )}
 
@@ -168,7 +200,8 @@ export default function SettingsPage() {
               </button>
             )}
 
-            {gpu && gpu.status !== "offline" && !isTransitioning && (
+            {/* Destroy always visible when not offline */}
+            {gpu && gpu.status !== "offline" && (
               <button
                 onClick={() => handleAction("destroy", destroyGpu)}
                 disabled={!!actionLoading}
@@ -179,16 +212,59 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {isTransitioning && (
+          {(gpu?.status === "renting" || gpu?.status === "setup") && (
             <p className="text-xs text-zinc-500 text-center">
               This may take a few minutes. Status will update automatically.
             </p>
           )}
         </div>
 
+        {/* GPU Offer Picker */}
+        {showOffers && (
+          <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Select GPU</h2>
+              <button
+                onClick={() => setShowOffers(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {offersLoading ? (
+              <p className="text-zinc-500 text-center py-4">Searching available GPUs...</p>
+            ) : offers.length === 0 ? (
+              <p className="text-zinc-500 text-center py-4">No suitable GPU offers found. Try again later.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {offers.map((offer) => (
+                  <button
+                    key={offer.id}
+                    onClick={() => handleRent(offer.id)}
+                    disabled={!!actionLoading}
+                    className="w-full text-left p-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-medium">{offer.gpu_name}</span>
+                      <span className="text-green-400 font-medium">${offer.dph_total.toFixed(3)}/hr</span>
+                    </div>
+                    <div className="flex gap-4 mt-1 text-xs text-zinc-500">
+                      <span>{offer.gpu_ram}GB VRAM</span>
+                      <span>{offer.cpu_cores} CPU cores</span>
+                      <span>{offer.disk_space}GB disk</span>
+                      {offer.reliability && <span>{(offer.reliability * 100).toFixed(0)}% reliability</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Info */}
         <div className="bg-zinc-900/50 rounded-xl p-4 space-y-2 text-sm text-zinc-500">
-          <p><strong className="text-zinc-400">Rent</strong> — Creates a new GPU instance and installs Wan 2.2 model (~72GB, first time only)</p>
+          <p><strong className="text-zinc-400">Rent</strong> — Pick a GPU, creates instance, and installs Wan 2.2 model (~72GB, first time only)</p>
           <p><strong className="text-zinc-400">Stop</strong> — Pauses compute billing. Storage is kept so model stays installed. Small storage cost only.</p>
           <p><strong className="text-zinc-400">Start</strong> — Resumes a stopped instance. Much faster than renting new.</p>
           <p><strong className="text-zinc-400">Destroy</strong> — Deletes everything. You will need to re-download the model next time.</p>

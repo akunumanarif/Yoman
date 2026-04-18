@@ -79,9 +79,38 @@ export function getResultUrl(id: string): string {
 
 // === GPU API ===
 
+export interface GpuOffer {
+  id: number;
+  gpu_name: string;
+  gpu_ram: number;
+  cpu_cores: number;
+  disk_space: number;
+  dph_total: number;
+  reliability: number | null;
+}
+
 export async function getGpuStatus(): Promise<GpuInstance> {
   const res = await fetch(`${API_BASE}/gpu/status`);
   if (!res.ok) throw new Error("Failed to fetch GPU status");
+  return res.json();
+}
+
+export async function listGpuOffers(): Promise<GpuOffer[]> {
+  const res = await fetch(`${API_BASE}/gpu/offers`);
+  if (!res.ok) throw new Error("Failed to fetch GPU offers");
+  return res.json();
+}
+
+export async function rentGpuWithOffer(offerId: number): Promise<GpuInstance> {
+  const res = await fetch(`${API_BASE}/gpu/rent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ offer_id: offerId }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Failed to rent GPU" }));
+    throw new Error(error.detail || "Failed to rent GPU");
+  }
   return res.json();
 }
 
@@ -94,7 +123,6 @@ async function gpuAction(action: string): Promise<GpuInstance> {
   return res.json();
 }
 
-export const rentGpu = () => gpuAction("rent");
 export const startGpu = () => gpuAction("start");
 export const stopGpu = () => gpuAction("stop");
 export const destroyGpu = () => gpuAction("destroy");
