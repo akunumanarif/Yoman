@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # GPU Preferences
     gpu_min_vram: int = 24
     gpu_max_bid_price: float = 0.30
-    gpu_preferred_models: str = "RTX_4090,A100,H100"
+    gpu_preferred_models: str = "RTX 4090,A100,H100"
 
     # Vast.ai Docker image for GPU instances
     vast_docker_image: str = "pytorch/pytorch:2.4.0-cuda12.4-cudnn9-devel"

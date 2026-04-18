@@ -99,8 +99,34 @@ async def list_offers():
     ]
 
 
+@router.get("/gpu/instances")
+async def list_my_instances(session: Session = Depends(get_session)):
+    """List all instances on the vast.ai account for connecting."""
+    gpu = get_gpu(session)
+    vast = VastService()
+    instances = vast.list_instances()
+
+    # Filter out the one we're already tracking
+    return [
+        {
+            "id": inst.get("id"),
+            "gpu_name": inst.get("gpu_name", "Unknown"),
+            "gpu_ram": round(inst.get("gpu_ram", 0)),
+            "status": inst.get("actual_status", inst.get("status_msg", "unknown")),
+            "cost_per_hour": inst.get("dph_total", 0),
+            "cur_state": inst.get("cur_state", "unknown"),
+        }
+        for inst in instances
+        if inst.get("id") != gpu.instance_id
+    ]
+
+
 class RentRequest(BaseModel):
     offer_id: int
+
+
+class ConnectRequest(BaseModel):
+    instance_id: int
 
 
 @router.post("/gpu/rent", response_model=GpuInstanceResponse)
@@ -142,6 +168,54 @@ async def rent_gpu(req: RentRequest, session: Session = Depends(get_session)):
 
     # Wait for running in background
     asyncio.create_task(_wait_and_setup(instance_id))
+
+    session.refresh(gpu)
+    return gpu
+
+
+@router.post("/gpu/connect", response_model=GpuInstanceResponse)
+async def connect_gpu(req: ConnectRequest, session: Session = Depends(get_session)):
+    """Connect an existing vast.ai instance (rented manually from UI)."""
+    gpu = get_gpu(session)
+
+    if gpu.status in (GpuStatus.RUNNING, GpuStatus.RENTING, GpuStatus.SETUP):
+        raise HTTPException(400, f"GPU already {gpu.status.value}. Destroy it first.")
+
+    vast = VastService()
+    info = vast.get_instance(req.instance_id)
+    if not info:
+        raise HTTPException(404, f"Instance {req.instance_id} not found on vast.ai")
+
+    gpu.instance_id = req.instance_id
+    gpu.ssh_host = info.ssh_host
+    gpu.ssh_port = info.ssh_port
+    gpu.error_message = None
+    gpu.updated_at = datetime.now(timezone.utc)
+
+    # Try to get GPU name from vast.ai
+    try:
+        result = vast.client.show_instance(id=req.instance_id)
+        import json
+        if isinstance(result, str):
+            result = json.loads(result)
+        if isinstance(result, dict):
+            gpu.gpu_name = result.get("gpu_name", "Unknown")
+            gpu.cost_per_hour = result.get("dph_total")
+    except Exception:
+        gpu.gpu_name = "Unknown"
+
+    if info.status == "running":
+        # Instance is running, start setup
+        gpu.status = GpuStatus.SETUP
+        session.add(gpu)
+        session.commit()
+        asyncio.create_task(_run_setup(req.instance_id, info.ssh_host, info.ssh_port))
+    else:
+        # Instance exists but not running yet
+        gpu.status = GpuStatus.RENTING
+        session.add(gpu)
+        session.commit()
+        asyncio.create_task(_wait_and_setup(req.instance_id))
 
     session.refresh(gpu)
     return gpu
@@ -228,6 +302,39 @@ async def destroy_gpu(session: Session = Depends(get_session)):
 
     session.refresh(gpu)
     return gpu
+
+
+async def _run_setup(instance_id: int, ssh_host: str, ssh_port: int):
+    """Background: run Wan 2.2 setup on an already-running instance."""
+    from database import engine
+
+    try:
+        with SSHService(ssh_host, ssh_port) as ssh:
+            ssh.execute("mkdir -p /workspace/inputs /workspace/output")
+            ssh.execute(f"cat << 'SETUP_EOF' > /workspace/setup.sh\n{SETUP_SCRIPT}\nSETUP_EOF")
+            ssh.execute("chmod +x /workspace/setup.sh")
+            stdout, stderr, exit_code = ssh.execute("bash /workspace/setup.sh", timeout=7200)
+
+            with Session(engine) as session:
+                gpu = get_gpu(session)
+                if exit_code != 0:
+                    gpu.status = GpuStatus.ERROR
+                    gpu.error_message = f"Setup failed: {stderr[:300]}"
+                else:
+                    gpu.status = GpuStatus.RUNNING
+                    gpu.is_setup_done = True
+                gpu.updated_at = datetime.now(timezone.utc)
+                session.add(gpu)
+                session.commit()
+    except Exception as e:
+        logger.exception(f"Setup error: {e}")
+        with Session(engine) as session:
+            gpu = get_gpu(session)
+            gpu.status = GpuStatus.ERROR
+            gpu.error_message = str(e)
+            gpu.updated_at = datetime.now(timezone.utc)
+            session.add(gpu)
+            session.commit()
 
 
 async def _wait_and_setup(instance_id: int):

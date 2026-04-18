@@ -89,6 +89,21 @@ export interface GpuOffer {
   reliability: number | null;
 }
 
+export interface VastInstance {
+  id: number;
+  gpu_name: string;
+  gpu_ram: number;
+  status: string;
+  cost_per_hour: number;
+  cur_state: string;
+}
+
+export async function listMyInstances(): Promise<VastInstance[]> {
+  const res = await fetch(`${API_BASE}/gpu/instances`);
+  if (!res.ok) throw new Error("Failed to fetch instances");
+  return res.json();
+}
+
 export async function getGpuStatus(): Promise<GpuInstance> {
   const res = await fetch(`${API_BASE}/gpu/status`);
   if (!res.ok) throw new Error("Failed to fetch GPU status");
@@ -119,6 +134,19 @@ async function gpuAction(action: string): Promise<GpuInstance> {
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: `Failed to ${action} GPU` }));
     throw new Error(error.detail || `Failed to ${action} GPU`);
+  }
+  return res.json();
+}
+
+export async function connectGpu(instanceId: number): Promise<GpuInstance> {
+  const res = await fetch(`${API_BASE}/gpu/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instance_id: instanceId }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Failed to connect GPU" }));
+    throw new Error(error.detail || "Failed to connect GPU");
   }
   return res.json();
 }

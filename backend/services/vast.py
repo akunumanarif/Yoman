@@ -35,7 +35,7 @@ class VastService:
         preferred = settings.gpu_preferred_models.split(",")
         min_vram = settings.gpu_min_vram
 
-        query = f"gpu_ram>={min_vram} rented=False rentable=True"
+        query = f"gpu_ram>={min_vram} rented=False rentable=True interruptible=True"
 
         if self.client:
             result = self.client.search_offers(query=query)
@@ -109,6 +109,23 @@ class VastService:
             return data.get("new_contract")
         logger.error(f"Failed to create instance: {output.stderr}")
         return None
+
+    def list_instances(self) -> list[dict]:
+        """List all current instances on the account."""
+        if self.client:
+            result = self.client.show_instances()
+            if isinstance(result, str):
+                result = json.loads(result)
+            return result if isinstance(result, list) else []
+
+        output = subprocess.run(
+            ["vastai", "show", "instances", "--raw"],
+            capture_output=True, text=True,
+        )
+        if output.returncode == 0:
+            data = json.loads(output.stdout)
+            return data if isinstance(data, list) else []
+        return []
 
     def get_instance(self, instance_id: int) -> InstanceInfo | None:
         """Get instance status and connection details."""

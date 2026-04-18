@@ -5,9 +5,12 @@ import Link from "next/link";
 import {
   GpuInstance,
   GpuOffer,
+  VastInstance,
   getGpuStatus,
   listGpuOffers,
+  listMyInstances,
   rentGpuWithOffer,
+  connectGpu,
   startGpu,
   stopGpu,
   destroyGpu,
@@ -26,6 +29,9 @@ export default function SettingsPage() {
   const [gpu, setGpu] = useState<GpuInstance | null>(null);
   const [offers, setOffers] = useState<GpuOffer[]>([]);
   const [showOffers, setShowOffers] = useState(false);
+  const [showConnect, setShowConnect] = useState(false);
+  const [myInstances, setMyInstances] = useState<VastInstance[]>([]);
+  const [connectLoading, setConnectLoading] = useState(false);
   const [offersLoading, setOffersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -72,6 +78,35 @@ export default function SettingsPage() {
       setShowOffers(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rent GPU");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFetchInstances = async () => {
+    setShowConnect(true);
+    setShowOffers(false);
+    setConnectLoading(true);
+    setError(null);
+    try {
+      const data = await listMyInstances();
+      setMyInstances(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch instances");
+    } finally {
+      setConnectLoading(false);
+    }
+  };
+
+  const handleConnect = async (instanceId: number) => {
+    setActionLoading("connect");
+    setError(null);
+    try {
+      const data = await connectGpu(instanceId);
+      setGpu(data);
+      setShowConnect(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect GPU");
     } finally {
       setActionLoading(null);
     }
@@ -171,13 +206,22 @@ export default function SettingsPage() {
           {/* Action Buttons */}
           <div className="flex gap-3 pt-2">
             {(!gpu || gpu.status === "offline" || gpu.status === "error") && (
-              <button
-                onClick={handleFetchOffers}
-                disabled={!!actionLoading}
-                className="flex-1 py-2.5 px-4 rounded-lg font-medium text-white bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
-              >
-                Rent GPU
-              </button>
+              <>
+                <button
+                  onClick={handleFetchOffers}
+                  disabled={!!actionLoading}
+                  className="flex-1 py-2.5 px-4 rounded-lg font-medium text-white bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
+                >
+                  Rent GPU
+                </button>
+                <button
+                  onClick={handleFetchInstances}
+                  disabled={!!actionLoading}
+                  className="flex-1 py-2.5 px-4 rounded-lg font-medium text-white bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 transition-colors"
+                >
+                  Connect Existing
+                </button>
+              </>
             )}
 
             {gpu?.status === "stopped" && (
@@ -254,6 +298,50 @@ export default function SettingsPage() {
                       <span>{offer.cpu_cores} CPU cores</span>
                       <span>{offer.disk_space}GB disk</span>
                       {offer.reliability && <span>{(offer.reliability * 100).toFixed(0)}% reliability</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Connect Existing Instance */}
+        {showConnect && (
+          <div className="bg-zinc-900 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Your Instances</h2>
+              <button
+                onClick={() => setShowConnect(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {connectLoading ? (
+              <p className="text-zinc-500 text-center py-4">Fetching your instances...</p>
+            ) : myInstances.length === 0 ? (
+              <p className="text-zinc-500 text-center py-4">No instances found on your vast.ai account.</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {myInstances.map((inst) => (
+                  <button
+                    key={inst.id}
+                    onClick={() => handleConnect(inst.id)}
+                    disabled={!!actionLoading}
+                    className="w-full text-left p-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-medium">{inst.gpu_name}</span>
+                      <span className="text-green-400 font-medium">${inst.cost_per_hour.toFixed(3)}/hr</span>
+                    </div>
+                    <div className="flex gap-4 mt-1 text-xs text-zinc-500">
+                      <span>{inst.gpu_ram}GB VRAM</span>
+                      <span>ID: {inst.id}</span>
+                      <span className={inst.status === "running" ? "text-green-500" : "text-yellow-500"}>
+                        {inst.status}
+                      </span>
                     </div>
                   </button>
                 ))}
