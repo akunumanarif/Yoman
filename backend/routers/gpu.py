@@ -304,6 +304,28 @@ async def destroy_gpu(session: Session = Depends(get_session)):
     return gpu
 
 
+@router.post("/gpu/retry-setup", response_model=GpuInstanceResponse)
+async def retry_setup(session: Session = Depends(get_session)):
+    """Re-run setup on the current instance (e.g. after a failed setup)."""
+    gpu = get_gpu(session)
+
+    if not gpu.instance_id or not gpu.ssh_host or not gpu.ssh_port:
+        raise HTTPException(400, "No running GPU instance to retry setup on.")
+    if gpu.status not in (GpuStatus.ERROR, GpuStatus.RUNNING):
+        raise HTTPException(400, f"Cannot retry setup when status is {gpu.status.value}")
+
+    gpu.status = GpuStatus.SETUP
+    gpu.error_message = None
+    gpu.updated_at = datetime.now(timezone.utc)
+    session.add(gpu)
+    session.commit()
+
+    asyncio.create_task(_run_setup(gpu.instance_id, gpu.ssh_host, gpu.ssh_port))
+
+    session.refresh(gpu)
+    return gpu
+
+
 async def _run_setup(instance_id: int, ssh_host: str, ssh_port: int):
     """Background: run Wan 2.2 setup on an already-running instance."""
     from database import engine

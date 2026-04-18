@@ -154,3 +154,4 @@ export async function connectGpu(instanceId: number): Promise<GpuInstance> {
 export const startGpu = () => gpuAction("start");
 export const stopGpu = () => gpuAction("stop");
 export const destroyGpu = () => gpuAction("destroy");
+export const retrySetup = () => gpuAction("retry-setup");

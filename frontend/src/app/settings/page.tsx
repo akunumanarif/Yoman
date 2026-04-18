@@ -14,6 +14,7 @@ import {
   startGpu,
   stopGpu,
   destroyGpu,
+  retrySetup,
 } from "@/lib/api";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -222,6 +223,16 @@ export default function SettingsPage() {
                   Connect Existing
                 </button>
               </>
+            )}
+
+            {gpu?.status === "error" && gpu.ssh_host && (
+              <button
+                onClick={() => handleAction("retry-setup", retrySetup)}
+                disabled={!!actionLoading}
+                className="flex-1 py-2.5 px-4 rounded-lg font-medium text-white bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
+              >
+                {actionLoading === "retry-setup" ? "Retrying..." : "Retry Setup"}
+              </button>
             )}
 
             {gpu?.status === "stopped" && (
