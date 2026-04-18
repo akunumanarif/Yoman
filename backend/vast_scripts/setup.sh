@@ -18,9 +18,7 @@ rm -rf /workspace/Wan2.2
 cd /workspace
 git clone https://github.com/Wan-Video/Wan2.2.git
 cd Wan2.2
-pip install --upgrade pip
-pip install setuptools wheel --ignore-installed
-pip install -r requirements.txt --no-build-isolation
+pip install -r requirements.txt --no-build-isolation --ignore-installed setuptools wheel
 
 # Download model weights (skip if already downloaded)
 if [ ! -d "/workspace/models/Wan2.2-Animate-14B" ]; then
