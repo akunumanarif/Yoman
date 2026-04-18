@@ -18,7 +18,8 @@ rm -rf /workspace/Wan2.2
 cd /workspace
 git clone https://github.com/Wan-Video/Wan2.2.git
 cd Wan2.2
-pip install --upgrade pip setuptools wheel
+pip install --upgrade pip
+pip install setuptools wheel --ignore-installed
 pip install -r requirements.txt --no-build-isolation
 
 # Download model weights (skip if already downloaded)
