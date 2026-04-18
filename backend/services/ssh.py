@@ -43,12 +43,12 @@ def _register_ssh_key(pub_key: str):
     logger.info("Registering SSH key with vast.ai...")
     try:
         # Use vast CLI to add SSH key
-        result = subprocess.run(
+        subprocess.run(
             ["vastai", "set", "api-key", settings.vast_api_key],
             capture_output=True, text=True,
         )
         result = subprocess.run(
-            ["vastai", "ssh-key", "add", pub_key],
+            ["vastai", "create", "ssh-key", pub_key],
             capture_output=True, text=True,
         )
         if result.returncode == 0:
